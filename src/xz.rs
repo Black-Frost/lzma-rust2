@@ -34,40 +34,40 @@ use crate::{
     filter::{bcj::BcjReader, delta::DeltaReader},
 };
 
-const XZ_MAGIC: [u8; 6] = [0xFD, b'7', b'z', b'X', b'Z', 0x00];
+pub(crate) const XZ_MAGIC: [u8; 6] = [0xFD, b'7', b'z', b'X', b'Z', 0x00];
 
-const XZ_FOOTER_MAGIC: [u8; 2] = [b'Y', b'Z'];
+pub(crate) const XZ_FOOTER_MAGIC: [u8; 2] = [b'Y', b'Z'];
 
 #[derive(Debug, Clone)]
-struct IndexRecord {
-    unpadded_size: u64,
-    uncompressed_size: u64,
+pub(crate) struct IndexRecord {
+    pub(crate) unpadded_size: u64,
+    pub(crate) uncompressed_size: u64,
 }
 
 #[derive(Debug)]
-struct Index {
-    pub number_of_records: u64,
-    pub records: Vec<IndexRecord>,
+pub(crate) struct Index {
+    pub(crate) number_of_records: u64,
+    pub(crate) records: Vec<IndexRecord>,
 }
 
 #[derive(Debug)]
-struct StreamHeader {
-    pub check_type: CheckType,
+pub(crate) struct StreamHeader {
+    pub(crate) check_type: CheckType,
 }
 
 #[derive(Debug)]
-struct StreamFooter {
-    pub backward_size: u32,
-    pub stream_flags: [u8; 2],
+pub(crate) struct StreamFooter {
+    pub(crate) backward_size: u32,
+    pub(crate) stream_flags: [u8; 2],
 }
 
 #[derive(Debug)]
-struct BlockHeader {
-    header_size: usize,
-    compressed_size: Option<u64>,
-    uncompressed_size: Option<u64>,
-    filters: [Option<FilterType>; 4],
-    properties: [u32; 4],
+pub(crate) struct BlockHeader {
+    pub(crate) header_size: usize,
+    pub(crate) compressed_size: Option<u64>,
+    pub(crate) uncompressed_size: Option<u64>,
+    pub(crate) filters: [Option<FilterType>; 4],
+    pub(crate) properties: [u32; 4],
 }
 
 #[derive(Debug, Clone)]
@@ -175,7 +175,7 @@ pub enum CheckType {
 }
 
 impl CheckType {
-    fn from_byte(byte: u8) -> crate::Result<Self> {
+    pub(crate) fn from_byte(byte: u8) -> crate::Result<Self> {
         match byte {
             0x00 => Ok(CheckType::None),
             0x01 => Ok(CheckType::Crc32),
@@ -186,7 +186,7 @@ impl CheckType {
     }
 
     #[cfg(any(feature = "encoder", feature = "xz"))]
-    fn checksum_size(self) -> u64 {
+    pub(crate) fn checksum_size(self) -> u64 {
         match self {
             CheckType::None => 0,
             CheckType::Crc32 => 4,
@@ -242,7 +242,7 @@ impl TryFrom<u64> for FilterType {
 }
 
 /// Parse XZ multibyte integer (variable length encoding).
-fn parse_multibyte_integer(data: &[u8]) -> crate::Result<u64> {
+pub(crate) fn parse_multibyte_integer(data: &[u8]) -> crate::Result<u64> {
     let mut result = 0u64;
     let mut shift = 0;
 
@@ -263,7 +263,7 @@ fn parse_multibyte_integer(data: &[u8]) -> crate::Result<u64> {
 }
 
 /// Count the number of bytes used by a multibyte integer.
-fn count_multibyte_integer_size(data: &[u8]) -> usize {
+pub(crate) fn count_multibyte_integer_size(data: &[u8]) -> usize {
     for (i, &byte) in data.iter().enumerate() {
         if (byte & 0x80) == 0 {
             return i + 1;
@@ -272,7 +272,7 @@ fn count_multibyte_integer_size(data: &[u8]) -> usize {
     data.len()
 }
 
-fn parse_multibyte_integer_from_reader<R: Read>(reader: &mut R) -> crate::Result<u64> {
+pub(crate) fn parse_multibyte_integer_from_reader<R: Read>(reader: &mut R) -> crate::Result<u64> {
     let mut result = 0u64;
     let mut shift = 0;
 
@@ -295,7 +295,7 @@ fn parse_multibyte_integer_from_reader<R: Read>(reader: &mut R) -> crate::Result
     Err(error_invalid_data("XZ multibyte integer too long"))
 }
 
-fn count_multibyte_integer_size_for_value(mut value: u64) -> usize {
+pub(crate) fn count_multibyte_integer_size_for_value(mut value: u64) -> usize {
     if value == 0 {
         return 1;
     }
@@ -308,7 +308,7 @@ fn count_multibyte_integer_size_for_value(mut value: u64) -> usize {
     count
 }
 
-fn encode_multibyte_integer(mut value: u64, buf: &mut [u8]) -> crate::Result<usize> {
+pub(crate) fn encode_multibyte_integer(mut value: u64, buf: &mut [u8]) -> crate::Result<usize> {
     if value > (u64::MAX / 2) {
         return Err(error_invalid_data("value too big to encode"));
     }
@@ -735,7 +735,7 @@ impl BlockHeader {
 }
 
 /// Handles checksum calculation for different XZ check types.
-enum ChecksumCalculator {
+pub(crate) enum ChecksumCalculator {
     None,
     Crc32(Crc32),
     Crc64(Crc64),
@@ -743,7 +743,7 @@ enum ChecksumCalculator {
 }
 
 impl ChecksumCalculator {
-    fn new(check_type: CheckType) -> Self {
+    pub(crate) fn new(check_type: CheckType) -> Self {
         match check_type {
             CheckType::None => Self::None,
             CheckType::Crc32 => Self::Crc32(Crc32::new()),
@@ -752,7 +752,7 @@ impl ChecksumCalculator {
         }
     }
 
-    fn update(&mut self, data: &[u8]) {
+    pub(crate) fn update(&mut self, data: &[u8]) {
         match self {
             ChecksumCalculator::None => {}
             ChecksumCalculator::Crc32(crc) => {
@@ -767,7 +767,7 @@ impl ChecksumCalculator {
         }
     }
 
-    fn verify(self, expected: &[u8]) -> bool {
+    pub(crate) fn verify(self, expected: &[u8]) -> bool {
         match self {
             ChecksumCalculator::None => true,
             ChecksumCalculator::Crc32(crc) => {
@@ -815,7 +815,7 @@ impl ChecksumCalculator {
     }
 
     #[cfg(feature = "encoder")]
-    fn finalize_to_bytes(self) -> Vec<u8> {
+    pub(crate) fn finalize_to_bytes(self) -> Vec<u8> {
         match self {
             ChecksumCalculator::None => Vec::new(),
             ChecksumCalculator::Crc32(crc) => crc.finalize().to_le_bytes().to_vec(),
@@ -962,7 +962,7 @@ impl Index {
 }
 
 #[cfg(feature = "encoder")]
-fn write_xz_stream_header<W: Write>(writer: &mut W, check_type: CheckType) -> crate::Result<()> {
+pub(crate) fn write_xz_stream_header<W: Write>(writer: &mut W, check_type: CheckType) -> crate::Result<()> {
     writer.write_all(&XZ_MAGIC)?;
 
     let stream_flags = [0u8, check_type as u8];
@@ -975,7 +975,7 @@ fn write_xz_stream_header<W: Write>(writer: &mut W, check_type: CheckType) -> cr
 }
 
 #[cfg(feature = "encoder")]
-fn encode_lzma2_dict_size(dict_size: u32) -> crate::Result<u8> {
+pub(crate) fn encode_lzma2_dict_size(dict_size: u32) -> crate::Result<u8> {
     if dict_size < 4096 {
         return Err(error_invalid_input("LZMA2 dictionary size too small"));
     }
@@ -1140,7 +1140,7 @@ fn create_filter_chain<'reader>(
 }
 
 #[cfg(feature = "encoder")]
-fn add_padding<W: Write + ?Sized>(writer: &mut W, padding_needed: usize) -> crate::Result<()> {
+pub(crate) fn add_padding<W: Write + ?Sized>(writer: &mut W, padding_needed: usize) -> crate::Result<()> {
     match padding_needed {
         1 => writer.write_all(&[0]),
         2 => writer.write_all(&[0, 0]),
@@ -1150,7 +1150,7 @@ fn add_padding<W: Write + ?Sized>(writer: &mut W, padding_needed: usize) -> crat
 }
 
 #[cfg(feature = "encoder")]
-fn generate_block_header_data(
+pub(crate) fn generate_block_header_data(
     filters: &[FilterConfig],
     lzma_dict_size: u32,
 ) -> crate::Result<Vec<u8>> {
@@ -1227,7 +1227,7 @@ fn generate_block_header_data(
 }
 
 #[cfg(feature = "encoder")]
-fn write_xz_block_header<W: Write>(
+pub(crate) fn write_xz_block_header<W: Write>(
     writer: &mut W,
     filters: &[FilterConfig],
     lzma_dict_size: u32,
@@ -1259,7 +1259,7 @@ fn write_xz_block_header<W: Write>(
 }
 
 #[cfg(feature = "encoder")]
-fn write_xz_index<W: Write>(writer: &mut W, index_records: &[IndexRecord]) -> crate::Result<()> {
+pub(crate) fn write_xz_index<W: Write>(writer: &mut W, index_records: &[IndexRecord]) -> crate::Result<()> {
     let mut index_data = Vec::new();
 
     let mut temp_buf = [0u8; 10];
@@ -1294,7 +1294,7 @@ fn write_xz_index<W: Write>(writer: &mut W, index_records: &[IndexRecord]) -> cr
 }
 
 #[cfg(feature = "encoder")]
-fn write_xz_stream_footer<W: Write>(
+pub(crate) fn write_xz_stream_footer<W: Write>(
     writer: &mut W,
     index_records: &[IndexRecord],
     check_type: CheckType,

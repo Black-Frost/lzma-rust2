@@ -13,18 +13,18 @@ use crate::Read;
 #[cfg(feature = "encoder")]
 use crate::Write;
 
-struct BcjFilter {
-    is_encoder: bool,
-    pos: usize,
-    prev_mask: u32,
-    filter: FilterFn,
+pub(crate) struct BcjFilter {
+    pub(crate) is_encoder: bool,
+    pub(crate) pos: usize,
+    pub(crate) prev_mask: u32,
+    pub(crate) filter: FilterFn,
 }
 
-type FilterFn = fn(filter: &mut BcjFilter, buf: &mut [u8]) -> usize;
+pub(crate) type FilterFn = fn(filter: &mut BcjFilter, buf: &mut [u8]) -> usize;
 
 impl BcjFilter {
     #[inline]
-    fn code(&mut self, buf: &mut [u8]) -> usize {
+    pub(crate) fn code(&mut self, buf: &mut [u8]) -> usize {
         let filter = self.filter;
         filter(self, buf)
     }
