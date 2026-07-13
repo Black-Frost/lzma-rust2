@@ -939,6 +939,7 @@ impl XzStream {
                         } else if let Some(f) =
                             StreamFilter::from_filter_type(ft, properties[i])
                         {
+                            // TODO: Support multiple filters for sans-I/O API.
                             if pre_filter.is_some() {
                                 return Err(error_invalid_data(
                                     "multiple non-LZMA2 filters not supported yet for stream API",
