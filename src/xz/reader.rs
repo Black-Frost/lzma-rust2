@@ -1013,6 +1013,9 @@ impl XzStream {
 
             XzStreamState::IndexCount => {
                 if !has_complete_vli(&self.accum) {
+                    if self.accum.len() >= MAX_VLI_LEN {
+                        return Err(error_invalid_data("XZ multibyte integer too long"));
+                    }
                     self.accum_needed = self.accum.len() + 1;
                     return Ok(());
                 }
@@ -1041,6 +1044,9 @@ impl XzStream {
             XzStreamState::IndexRecordUnpadded { remaining } => {
                 let remaining = *remaining;
                 if !has_complete_vli(&self.accum) {
+                    if self.accum.len() >= MAX_VLI_LEN {
+                        return Err(error_invalid_data("XZ multibyte integer too long"));
+                    }
                     self.accum_needed = self.accum.len() + 1;
                     return Ok(());
                 }
@@ -1057,6 +1063,9 @@ impl XzStream {
             XzStreamState::IndexRecordUncompressed { remaining } => {
                 let remaining = *remaining;
                 if !has_complete_vli(&self.accum) {
+                    if self.accum.len() >= MAX_VLI_LEN {
+                        return Err(error_invalid_data("XZ multibyte integer too long"));
+                    }
                     self.accum_needed = self.accum.len() + 1;
                     return Ok(());
                 }
@@ -1173,6 +1182,15 @@ impl XzStream {
     }
 
 }
+
+/// An XZ variable-length integer encodes at most a 63-bit value, so a valid
+/// VLI is never longer than 9 bytes. The reader path enforces this bound in
+/// `parse_multibyte_integer_from_reader`; the streaming index parser must cap
+/// its accumulator the same way. Without the cap, a run of continuation bytes
+/// (`0x80`) grows `accum` without bound and every appended byte triggers a full
+/// `has_complete_vli` rescan from byte 0, giving an attacker O(n^2) work for
+/// O(n) input.
+const MAX_VLI_LEN: usize = 9;
 
 fn has_complete_vli(data: &[u8]) -> bool {
     for &byte in data {
