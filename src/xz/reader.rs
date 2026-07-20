@@ -586,6 +586,14 @@ impl XzStream {
         self.total_out
     }
 
+    /// The integrity check type used by the current stream.
+    ///
+    /// This is read from the stream header during decoding.
+    /// Before the header has been parsed, returns [`CheckType::None`].
+    pub fn check_type(&self) -> CheckType {
+        self.check_type
+    }
+
     /// Process available data from `input` into `output`.
     ///
     /// Returns how many bytes were consumed/produced and the stream status.
