@@ -239,7 +239,7 @@ impl<R: Read> LzmaReader<R> {
                         return Err(error);
                     }
                     self.end_reached = true;
-                    self.rc.normalize();
+                    let _ = self.rc.normalize();
                 }
             }
 

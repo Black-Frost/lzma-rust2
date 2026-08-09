@@ -56,17 +56,18 @@ impl<R: RangeReader> RangeDecoder<R> {
 
 impl<R: RangeReader> RangeDecoder<R> {
     #[inline(always)]
-    pub(crate) fn normalize(&mut self) {
+    pub(crate) fn normalize(&mut self) -> crate::Result<()> {
         if self.range < 0x0100_0000 {
-            let b = self.inner.read_u8() as u32;
+            let b = self.inner.read_u8()? as u32;
             self.code = (self.code << SHIFT_BITS) | b;
             self.range <<= SHIFT_BITS;
         }
+        Ok(())
     }
 
     #[inline(always)]
-    pub(crate) fn decode_bit(&mut self, prob: &mut u16) -> i32 {
-        self.normalize();
+    pub(crate) fn decode_bit(&mut self, prob: &mut u16) -> crate::Result<i32> {
+        self.normalize()?;
         let bound = (self.range >> BIT_MODEL_TOTAL_BITS) * (*prob as u32);
 
         // This mask will be 0 for bit 0, and 0xFFFFFFFF for bit 1.
@@ -79,26 +80,26 @@ impl<R: RangeReader> RangeDecoder<R> {
         let offset = RC_BIT_MODEL_OFFSET & !mask;
         *prob = p.wrapping_sub((p.wrapping_add(offset)) >> MOVE_BITS) as u16;
 
-        (mask & 1) as i32
+        Ok((mask & 1) as i32)
     }
 
-    pub(crate) fn decode_bit_tree(&mut self, probs: &mut [u16]) -> i32 {
+    pub(crate) fn decode_bit_tree(&mut self, probs: &mut [u16]) -> crate::Result<i32> {
         let mut symbol = 1;
         loop {
-            symbol = (symbol << 1) | self.decode_bit(&mut probs[symbol as usize]);
+            symbol = (symbol << 1) | self.decode_bit(&mut probs[symbol as usize])?;
             if symbol >= probs.len() as i32 {
                 break;
             }
         }
-        symbol - probs.len() as i32
+        Ok(symbol - probs.len() as i32)
     }
 
-    pub(crate) fn decode_reverse_bit_tree(&mut self, probs: &mut [u16]) -> i32 {
+    pub(crate) fn decode_reverse_bit_tree(&mut self, probs: &mut [u16]) -> crate::Result<i32> {
         let mut symbol = 1;
         let mut i = 0;
         let mut result = 0;
         loop {
-            let bit = self.decode_bit(&mut probs[symbol as usize]);
+            let bit = self.decode_bit(&mut probs[symbol as usize])?;
             symbol = (symbol << 1) | bit;
             result |= bit << i;
             i += 1;
@@ -106,7 +107,7 @@ impl<R: RangeReader> RangeDecoder<R> {
                 break;
             }
         }
-        result
+        Ok(result)
     }
 
     /*
@@ -127,18 +128,18 @@ impl<R: RangeReader> RangeDecoder<R> {
         }
     */
 
-    pub(crate) fn decode_direct_bits(&mut self, count: u32) -> i32 {
+    pub(crate) fn decode_direct_bits(&mut self, count: u32) -> crate::Result<i32> {
         #[cfg(all(feature = "optimization", target_arch = "aarch64"))]
         {
             if self.inner.is_buffer() && count > 0 {
-                return self.decode_direct_bits_aarch64(count);
+                return Ok(self.decode_direct_bits_aarch64(count));
             }
         }
 
         #[cfg(all(feature = "optimization", target_arch = "x86_64"))]
         {
             if self.inner.is_buffer() && count > 0 {
-                return self.decode_direct_bits_x86_64(count);
+                return Ok(self.decode_direct_bits_x86_64(count));
             }
         }
 
@@ -166,12 +167,12 @@ impl<R: RangeReader> RangeDecoder<R> {
             }
 
             // Slow Path
-            let b = self.inner.read_u8() as u32;
+            let b = self.inner.read_u8()? as u32;
             self.code = (self.code << SHIFT_BITS) | b;
             self.range <<= SHIFT_BITS;
         }
 
-        result as _
+        Ok(result as _)
     }
 
     #[cfg(all(feature = "optimization", target_arch = "aarch64"))]
@@ -404,7 +405,7 @@ impl RangeDecoderBuffer {
 }
 
 pub(crate) trait RangeReader {
-    fn read_u8(&mut self) -> u8;
+    fn read_u8(&mut self) -> crate::Result<u8>;
 
     fn try_read_u8(&mut self) -> crate::Result<u8>;
 
@@ -433,17 +434,12 @@ pub(crate) trait RangeReader {
 
 impl<T: Read> RangeReader for T {
     #[inline(always)]
-    fn read_u8(&mut self) -> u8 {
-        // Out of bound reads return an 1, which is fine, since the
-        // LZMA reader will then throw a "dist overflow" error.
-        // Not returning an error results in code that can be better
-        // optimized in the hot path and overall 10% better decoding
-        // performance.
+    fn read_u8(&mut self) -> crate::Result<u8> {
+        // Error-propagating variant (no swallowing) for benchmarking the
+        // hot-path cost of proper error handling.
         let mut buf = [0; 1];
-        match self.read_exact(&mut buf) {
-            Ok(_) => buf[0],
-            Err(_) => 1,
-        }
+        self.read_exact(&mut buf)?;
+        Ok(buf[0])
     }
 
     fn try_read_u8(&mut self) -> crate::Result<u8> {
@@ -462,15 +458,12 @@ impl<T: Read> RangeReader for T {
 
 impl RangeReader for RangeDecoderBuffer {
     #[inline(always)]
-    fn read_u8(&mut self) -> u8 {
-        // Out of bound reads return an 1, which is fine, since the
-        // LZMA reader will then throw a "dist overflow" error.
-        // Not returning an error results in code that can be better
-        // optimized in the hot path and overall 10% better decoding
-        // performance.
-        let byte = *self.buf.get(self.pos).unwrap_or(&1);
+    fn read_u8(&mut self) -> crate::Result<u8> {
+        // Error-propagating variant (no swallowing) for benchmarking the
+        // hot-path cost of proper error handling.
+        let byte = self.buf.get(self.pos).copied().ok_or_else(error_eof)?;
         self.pos += 1;
-        byte
+        Ok(byte)
     }
 
     fn try_read_u8(&mut self) -> crate::Result<u8> {
